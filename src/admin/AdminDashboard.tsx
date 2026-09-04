@@ -1,11 +1,11 @@
-import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Users, Activity, FileText, AlertTriangle } from 'lucide-react';
-import { getRecords, getReferrals, getStatusBadge } from './types';
+import { Users, Activity, AlertTriangle, Building2, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import type { ScreeningRecord, Alert, Hospital, Profile } from './types';
 
 const PIE_COLORS = ['#27500A', '#BA7517', '#A32D2D'];
 
@@ -26,23 +26,37 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
 }
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
-  const records = getRecords();
-  const referrals = getReferrals();
+  const [scans, setScans] = useState<ScreeningRecord[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  useEffect(() => {
+    const loadData = async () => {
+      const [scansRes, alertsRes, hospitalsRes, profilesRes] = await Promise.all([
+        supabase.from('scans').select('*, baby:babies(*)').order('scan_date', { ascending: false }),
+        supabase.from('alerts').select('*, scan:scans(*)').order('created_at', { ascending: false }),
+        supabase.from('hospitals').select('*'),
+        supabase.from('profiles').select('*'),
+      ]);
+
+      setScans((scansRes.data as ScreeningRecord[]) || []);
+      setAlerts((alertsRes.data as Alert[]) || []);
+      setHospitals((hospitalsRes.data as Hospital[]) || []);
+      setProfiles((profilesRes.data as Profile[]) || []);
+      setLoading(false);
+    };
+    loadData();
+  }, []);
 
   const stats = useMemo(() => {
-    const uniqueChildren = new Set(records.map(r => r.babyId)).size;
-    const screeningsToday = records.filter(r => {
-      const d = new Date(r.timestamp);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime() === today.getTime();
-    }).length;
-    const criticalCases = records.filter(r => r.bilirubin >= 17).length;
-    return { uniqueChildren, screeningsToday, criticalCases };
-  }, [records]);
+    const totalScans = scans.length;
+    const highRisk = scans.filter(s => s.risk_level === 'High').length;
+    const pendingAlerts = alerts.filter(a => a.hospital_response === 'pending').length;
+    const approvedHospitals = hospitals.filter(h => h.is_approved).length;
+    return { totalScans, highRisk, pendingAlerts, approvedHospitals, totalUsers: profiles.length };
+  }, [scans, alerts, hospitals, profiles]);
 
   const barData = useMemo(() => {
     const days: { date: string; count: number }[] = [];
@@ -51,46 +65,50 @@ export default function AdminDashboard() {
       d.setDate(d.getDate() - i);
       d.setHours(0, 0, 0, 0);
       const label = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
-      const count = records.filter(r => {
-        const rd = new Date(r.timestamp);
+      const count = scans.filter(s => {
+        const rd = new Date(s.scan_date);
         rd.setHours(0, 0, 0, 0);
         return rd.getTime() === d.getTime();
       }).length;
       days.push({ date: label, count });
     }
     return days;
-  }, [records]);
+  }, [scans]);
 
   const pieData = useMemo(() => {
-    const normal = records.filter(r => r.status === 'Normal').length;
-    const monitor = records.filter(r => r.status === 'Monitor').length;
-    const refer = records.filter(r => r.status === 'Refer Urgently').length;
+    const low = scans.filter(s => s.risk_level === 'Low').length;
+    const medium = scans.filter(s => s.risk_level === 'Medium').length;
+    const high = scans.filter(s => s.risk_level === 'High').length;
     return [
-      { name: 'Normal', value: normal },
-      { name: 'Monitor', value: monitor },
-      { name: 'Refer Urgently', value: refer },
+      { name: 'Low', value: low },
+      { name: 'Medium', value: medium },
+      { name: 'High', value: high },
     ].filter(d => d.value > 0);
-  }, [records]);
+  }, [scans]);
 
-  const recentScreenings = [...records].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
-  const recentReferrals = [...referrals].sort((a, b) => b.referralDate - a.referralDate).slice(0, 5);
+  const recentAlerts = alerts.slice(0, 5);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-[#0F6E56]" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Children" value={stats.uniqueChildren} icon={Users} color="#0F6E56" />
-        <StatCard label="Screenings Today" value={stats.screeningsToday} icon={Activity} color="#185FA5" />
-        <StatCard label="Total Referrals" value={referrals.length} icon={FileText} color="#BA7517" />
-        <StatCard label="Critical Cases" value={stats.criticalCases} icon={AlertTriangle} color="#A32D2D" />
+        <StatCard label="Total Scans" value={stats.totalScans} icon={Activity} color="#0F6E56" />
+        <StatCard label="High-Risk Cases" value={stats.highRisk} icon={AlertTriangle} color="#A32D2D" />
+        <StatCard label="Pending Alerts" value={stats.pendingAlerts} icon={AlertTriangle} color="#BA7517" />
+        <StatCard label="Approved Hospitals" value={stats.approvedHospitals} icon={Building2} color="#185FA5" />
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Bar chart */}
         <div className="bg-white rounded-xl border border-[#E5E3DC] p-5 shadow-sm">
-          <h2 className="font-semibold text-[#1A1A1A] mb-4 text-sm">Screenings — Last 7 Days</h2>
-          {records.length === 0 ? (
+          <h2 className="font-semibold text-[#1A1A1A] mb-4 text-sm">Scans — Last 7 Days</h2>
+          {scans.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-[#5F5E5A] text-sm">No data yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
@@ -98,120 +116,62 @@ export default function AdminDashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#F0EFE9" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#5F5E5A' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#5F5E5A' }} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ borderRadius: 8, border: '1px solid #E5E3DC', fontSize: 12 }}
-                />
-                <Bar dataKey="count" name="Screenings" fill="#0F6E56" radius={[4, 4, 0, 0]} />
+                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E5E3DC', fontSize: 12 }} />
+                <Bar dataKey="count" name="Scans" fill="#0F6E56" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        {/* Pie chart */}
         <div className="bg-white rounded-xl border border-[#E5E3DC] p-5 shadow-sm">
-          <h2 className="font-semibold text-[#1A1A1A] mb-4 text-sm">Status Distribution</h2>
+          <h2 className="font-semibold text-[#1A1A1A] mb-4 text-sm">Risk Level Distribution</h2>
           {pieData.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-[#5F5E5A] text-sm">No data yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
                   {pieData.map((_, index) => (
                     <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ borderRadius: 8, border: '1px solid #E5E3DC', fontSize: 12 }}
-                />
+                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E5E3DC', fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
           )}
         </div>
       </div>
 
-      {/* Recent panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Recent screenings */}
-        <div className="bg-white rounded-xl border border-[#E5E3DC] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E3DC]">
-            <h2 className="font-semibold text-[#1A1A1A] text-sm">Recent Screenings</h2>
-            <button
-              onClick={() => navigate('/admin/screenings')}
-              className="text-xs text-[#0F6E56] hover:underline font-medium"
-            >
-              View all
-            </button>
-          </div>
-          {recentScreenings.length === 0 ? (
-            <div className="p-5 text-center text-sm text-[#5F5E5A]">No screenings yet</div>
-          ) : (
-            <div className="divide-y divide-[#F0EFE9]">
-              {recentScreenings.map(r => (
-                <div key={r.id} className="flex items-center justify-between px-5 py-3">
-                  <div>
-                    <p className="font-medium text-sm text-[#1A1A1A]">{r.babyId}</p>
-                    <p className="text-xs text-[#5F5E5A]">{r.motherName}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`font-bold text-sm ${
-                      r.status === 'Normal' ? 'text-[#27500A]' :
-                      r.status === 'Monitor' ? 'text-[#BA7517]' : 'text-[#A32D2D]'
-                    }`}>
-                      {r.bilirubin} mg/dL
-                    </span>
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${getStatusBadge(r.status)}`}>
-                      {r.status === 'Normal' ? 'Normal' : r.status === 'Monitor' ? 'Monitor' : 'Refer'}
-                    </span>
-                  </div>
+      <div className="bg-white rounded-xl border border-[#E5E3DC] shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#E5E3DC]">
+          <h2 className="font-semibold text-[#1A1A1A] text-sm">Recent Alerts</h2>
+        </div>
+        {recentAlerts.length === 0 ? (
+          <div className="p-5 text-center text-sm text-[#5F5E5A]">No alerts yet</div>
+        ) : (
+          <div className="divide-y divide-[#F0EFE9]">
+            {recentAlerts.map(alert => (
+              <div key={alert.id} className="flex items-center justify-between px-5 py-3">
+                <div>
+                  <p className="font-medium text-sm text-[#1A1A1A]">
+                    {alert.scan?.risk_level === 'High' ? 'High Risk' : alert.scan?.risk_level || 'Unknown'} Alert
+                  </p>
+                  <p className="text-xs text-[#5F5E5A]">
+                    {new Date(alert.created_at).toLocaleString()}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Recent referrals */}
-        <div className="bg-white rounded-xl border border-[#E5E3DC] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E3DC]">
-            <h2 className="font-semibold text-[#1A1A1A] text-sm">Recent Referrals</h2>
-            <button
-              onClick={() => navigate('/admin/referrals')}
-              className="text-xs text-[#0F6E56] hover:underline font-medium"
-            >
-              View all
-            </button>
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                  alert.hospital_response === 'pending' ? 'bg-gray-100 text-gray-600' :
+                  alert.hospital_response === 'resolved' ? 'bg-green-100 text-green-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {alert.hospital_response}
+                </span>
+              </div>
+            ))}
           </div>
-          {recentReferrals.length === 0 ? (
-            <div className="p-5 text-center text-sm text-[#5F5E5A]">No referrals yet</div>
-          ) : (
-            <div className="divide-y divide-[#F0EFE9]">
-              {recentReferrals.map(ref => {
-                const linked = records.find(r => r.id === ref.screeningId);
-                return (
-                  <div key={ref.id} className="flex items-center justify-between px-5 py-3">
-                    <div>
-                      <p className="font-medium text-sm text-[#1A1A1A]">
-                        {linked?.babyId ?? '—'}
-                      </p>
-                      <p className="text-xs text-[#5F5E5A]">{ref.referredTo || 'Unknown facility'}</p>
-                    </div>
-                    <p className="text-xs text-[#5F5E5A]">
-                      {new Date(ref.referralDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

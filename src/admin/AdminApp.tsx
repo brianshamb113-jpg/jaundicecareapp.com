@@ -1,26 +1,56 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import AdminLogin from './AdminLogin';
 import AdminLayout from './AdminLayout';
 import AdminDashboard from './AdminDashboard';
-import AdminChildren, { ChildStoryPage } from './AdminChildren';
-import AdminScreenings from './AdminScreenings';
-import AdminReferrals from './AdminReferrals';
+import AdminScans from './AdminScans';
+import AdminAlerts from './AdminAlerts';
+import AdminHospitals from './AdminHospitals';
 import AdminAnnouncements from './AdminAnnouncements';
 import AdminSettings from './AdminSettings';
-import { getSession } from './types';
+import type { Profile } from './types';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [checking, setChecking] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    if (!getSession()) {
-      navigate('/admin', { replace: true, state: { from: location } });
-    }
-  }, [location, navigate]);
+    let mounted = true;
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        navigate('/admin', { replace: true });
+        return;
+      }
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (mounted) {
+        setIsAdmin((data as Profile | null)?.role === 'admin');
+        setChecking(false);
+      }
+    });
+    return () => { mounted = false; };
+  }, [navigate, location]);
 
-  if (!getSession()) return null;
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[#0F6E56]" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    navigate('/admin', { replace: true });
+    return null;
+  }
+
   return <>{children}</>;
 }
 
@@ -28,76 +58,12 @@ export default function AdminApp() {
   return (
     <Routes>
       <Route path="/" element={<AdminLogin />} />
-      <Route
-        path="/dashboard"
-        element={
-          <RequireAuth>
-            <AdminLayout>
-              <AdminDashboard />
-            </AdminLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/children"
-        element={
-          <RequireAuth>
-            <AdminLayout>
-              <AdminChildren />
-            </AdminLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/children/:babyId"
-        element={
-          <RequireAuth>
-            <AdminLayout>
-              <ChildStoryPage />
-            </AdminLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/screenings"
-        element={
-          <RequireAuth>
-            <AdminLayout>
-              <AdminScreenings />
-            </AdminLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/referrals"
-        element={
-          <RequireAuth>
-            <AdminLayout>
-              <AdminReferrals />
-            </AdminLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/announcements"
-        element={
-          <RequireAuth>
-            <AdminLayout>
-              <AdminAnnouncements />
-            </AdminLayout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <RequireAuth>
-            <AdminLayout>
-              <AdminSettings />
-            </AdminLayout>
-          </RequireAuth>
-        }
-      />
+      <Route path="/dashboard" element={<RequireAuth><AdminLayout><AdminDashboard /></AdminLayout></RequireAuth>} />
+      <Route path="/scans" element={<RequireAuth><AdminLayout><AdminScans /></AdminLayout></RequireAuth>} />
+      <Route path="/alerts" element={<RequireAuth><AdminLayout><AdminAlerts /></AdminLayout></RequireAuth>} />
+      <Route path="/hospitals" element={<RequireAuth><AdminLayout><AdminHospitals /></AdminLayout></RequireAuth>} />
+      <Route path="/announcements" element={<RequireAuth><AdminLayout><AdminAnnouncements /></AdminLayout></RequireAuth>} />
+      <Route path="/settings" element={<RequireAuth><AdminLayout><AdminSettings /></AdminLayout></RequireAuth>} />
       <Route path="*" element={<Navigate to="/admin" replace />} />
     </Routes>
   );

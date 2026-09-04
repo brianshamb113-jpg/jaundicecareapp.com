@@ -1,25 +1,25 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, Activity, FileText, Megaphone,
+  LayoutDashboard, ScanLine, AlertTriangle, Building2, Megaphone,
   Settings, LogOut, Menu, X
 } from 'lucide-react';
-import { getSession } from './types';
+import { supabase } from '../lib/supabase';
 
 const NAV_ITEMS = [
   { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/admin/children', label: 'Children', icon: Users },
-  { path: '/admin/screenings', label: 'Screenings', icon: Activity },
-  { path: '/admin/referrals', label: 'Referrals', icon: FileText },
+  { path: '/admin/scans', label: 'Scans', icon: ScanLine },
+  { path: '/admin/alerts', label: 'Alerts', icon: AlertTriangle },
+  { path: '/admin/hospitals', label: 'Hospitals', icon: Building2 },
   { path: '/admin/announcements', label: 'Announcements', icon: Megaphone },
   { path: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
 const PAGE_TITLES: Record<string, string> = {
   '/admin/dashboard': 'Dashboard',
-  '/admin/children': 'Children',
-  '/admin/screenings': 'Screenings',
-  '/admin/referrals': 'Referrals',
+  '/admin/scans': 'All Scans',
+  '/admin/alerts': 'Alerts',
+  '/admin/hospitals': 'Hospitals',
   '/admin/announcements': 'Announcements',
   '/admin/settings': 'Settings',
 };
@@ -27,8 +27,8 @@ const PAGE_TITLES: Record<string, string> = {
 function SidebarContent({ onClose }: { onClose?: () => void }) {
   const navigate = useNavigate();
 
-  const handleSignOut = () => {
-    localStorage.removeItem('jc_admin_session');
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
     navigate('/admin', { replace: true });
     if (onClose) onClose();
   };
@@ -38,7 +38,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
       <div className="p-6 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
-            <span className="text-white text-lg">☀</span>
+            <span className="text-white text-lg font-bold">J</span>
           </div>
           <div>
             <p className="text-white font-bold text-sm leading-tight">JaundiceCARE</p>
@@ -61,7 +61,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
               }`
             }
           >
-            <Icon className="w-4.5 h-4.5 flex-shrink-0" size={18} />
+            <Icon className="flex-shrink-0" size={18} />
             {label}
           </NavLink>
         ))}
@@ -83,7 +83,6 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const session = getSession();
 
   const pageTitle = Object.entries(PAGE_TITLES).find(([key]) =>
     location.pathname.startsWith(key)
@@ -91,12 +90,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex h-screen bg-[#F7F6F2] overflow-hidden">
-      {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-60 flex-shrink-0 bg-[#0F6E56]">
         <SidebarContent />
       </aside>
 
-      {/* Mobile drawer overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
@@ -104,7 +101,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         />
       )}
 
-      {/* Mobile drawer */}
       <aside
         className={`fixed top-0 left-0 h-full w-60 bg-[#0F6E56] z-50 md:hidden transform transition-transform duration-300 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -121,9 +117,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <SidebarContent onClose={() => setSidebarOpen(false)} />
       </aside>
 
-      {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top bar */}
         <header className="bg-white border-b border-[#E5E3DC] px-6 py-4 flex items-center justify-between flex-shrink-0 shadow-sm">
           <div className="flex items-center gap-3">
             <button
@@ -134,20 +128,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </button>
             <h1 className="font-bold text-[#1A1A1A] text-lg">{pageTitle}</h1>
           </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-[#5F5E5A] hidden sm:block">
-              {session?.name ?? 'Administrator'}
-            </span>
-            <div className="w-9 h-9 bg-[#0F6E56] rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">
-                {(session?.name ?? 'A')[0].toUpperCase()}
-              </span>
-            </div>
+          <div className="w-9 h-9 bg-[#0F6E56] rounded-full flex items-center justify-center">
+            <span className="text-white font-bold text-sm">A</span>
           </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>
