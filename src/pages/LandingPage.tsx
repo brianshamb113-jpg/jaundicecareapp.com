@@ -1,11 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sun, Shield, Camera, Heart, ArrowRight } from 'lucide-react';
 
-interface LandingPageProps {
-  onNavigate: (path: string) => void;
-}
-
-export default function LandingPage({ onNavigate }: LandingPageProps) {
+export default function LandingPage() {
+  const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0F6E56] to-[#0d5844] text-white">
       <div className="max-w-2xl mx-auto px-6 py-12">
@@ -43,13 +41,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         {/* CTA */}
         <div className="space-y-3">
           <button
-            onClick={() => onNavigate('/register')}
+            onClick={() => navigate('/register')}
             className="w-full bg-white text-[#0F6E56] font-bold py-4 px-6 rounded-xl hover:bg-white/90 transition-colors flex items-center justify-center gap-2 text-lg"
           >
             Get Started <ArrowRight className="w-5 h-5" />
           </button>
           <button
-            onClick={() => onNavigate('/login')}
+            onClick={() => navigate('/login')}
             className="w-full bg-white/10 border border-white/30 text-white font-bold py-4 px-6 rounded-xl hover:bg-white/20 transition-colors"
           >
             I Already Have an Account

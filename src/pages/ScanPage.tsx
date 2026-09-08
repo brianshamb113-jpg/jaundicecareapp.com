@@ -104,7 +104,7 @@ export default function ScanPage() {
       {/* Header */}
       <div className="sticky top-0 z-40 bg-[#0F6E56] text-white p-4 rounded-b-xl shadow-lg">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => navigate('/')} className="text-white">
+          <button onClick={() => navigate('/dashboard')} className="text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h2 className="font-bold">New Scan</h2>
@@ -255,7 +255,7 @@ export default function ScanPage() {
                 <RefreshCw className="w-4 h-4" /> New Scan
               </button>
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/dashboard')}
                 className="flex-1 bg-[#185FA5] hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors"
               >
                 Done

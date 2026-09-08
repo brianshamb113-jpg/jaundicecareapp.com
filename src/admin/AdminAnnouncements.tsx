@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Send, Save } from 'lucide-react';
-import { getAnnouncements, saveAnnouncements, Announcement } from './types';
+import { Plus, Trash2, Send, Save, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import type { Announcement } from './types';
 
-const CATEGORIES: Announcement['category'][] = ['General', 'Clinical Update', 'Training', 'Alert', 'System'];
-const PRIORITIES: Announcement['priority'][] = ['Low', 'Medium', 'High', 'Critical'];
+const CATEGORIES = ['General', 'Clinical Update', 'Training', 'Alert', 'System'] as const;
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const;
 
 const PRIORITY_COLORS: Record<string, string> = {
   Low: 'bg-gray-100 text-gray-600',
@@ -20,35 +21,47 @@ const CAT_COLORS: Record<string, string> = {
   System: 'bg-gray-100 text-gray-700',
 };
 
-function emptyAnnouncement(): Omit<Announcement, 'id' | 'created_at'> {
-  return {
-    title: '',
-    body: '',
-    category: 'General',
-    priority: 'Medium',
-    is_published: false,
-  };
-}
+type FormData = {
+  title: string;
+  body: string;
+  category: string;
+  priority: Announcement['priority'];
+  is_published: boolean;
+};
+
+const EMPTY_FORM: FormData = {
+  title: '',
+  body: '',
+  category: 'General',
+  priority: 'Medium',
+  is_published: false,
+};
 
 export default function AdminAnnouncements() {
   const [items, setItems] = useState<Announcement[]>([]);
   const [selected, setSelected] = useState<Announcement | null>(null);
-  const [form, setForm] = useState<Omit<Announcement, 'id' | 'created_at'>>(emptyAnnouncement());
+  const [form, setForm] = useState<FormData>(EMPTY_FORM);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    setItems(getAnnouncements());
-  }, []);
-
-  const syncItems = (updated: Announcement[]) => {
-    setItems(updated);
-    saveAnnouncements(updated);
+  const loadAnnouncements = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('announcements')
+      .select('*')
+      .order('created_at', { ascending: false });
+    setItems((data as Announcement[]) || []);
+    setLoading(false);
   };
+
+  useEffect(() => {
+    loadAnnouncements();
+  }, []);
 
   const handleNew = () => {
     setSelected(null);
-    setForm(emptyAnnouncement());
-    setSaved(false);
+    setForm(EMPTY_FORM);
   };
 
   const handleSelect = (ann: Announcement) => {
@@ -60,42 +73,46 @@ export default function AdminAnnouncements() {
       priority: ann.priority,
       is_published: ann.is_published,
     });
-    setSaved(false);
   };
 
-  const handleSave = (publish: boolean) => {
+  const handleSave = async (publish: boolean) => {
     if (!form.title.trim()) return;
-    const newForm = { ...form, is_published: publish };
+    setSaving(true);
+    const payload = { ...form, is_published: publish };
+
     if (selected) {
-      const updated = items.map(i => i.id === selected.id ? { ...selected, ...newForm } : i);
-      syncItems(updated);
-      setSelected({ ...selected, ...newForm });
+      await supabase.from('announcements').update(payload).eq('id', selected.id);
+      setSelected({ ...selected, ...payload } as Announcement);
     } else {
-      const ann: Announcement = {
-        id: `ann-${Date.now()}`,
-        created_at: Date.now(),
-        ...newForm,
-      };
-      const updated = [ann, ...items];
-      syncItems(updated);
-      setSelected(ann);
+      const { data } = await supabase
+        .from('announcements')
+        .insert(payload)
+        .select()
+        .single();
+      if (data) setSelected(data as Announcement);
     }
-    setForm(newForm);
+
+    setForm({ ...form, is_published: publish });
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    loadAnnouncements();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selected) return;
-    const updated = items.filter(i => i.id !== selected.id);
-    syncItems(updated);
+    await supabase.from('announcements').delete().eq('id', selected.id);
     setSelected(null);
-    setForm(emptyAnnouncement());
+    setForm(EMPTY_FORM);
+    loadAnnouncements();
   };
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[#0F6E56]" /></div>;
+  }
 
   return (
     <div className="flex flex-col lg:flex-row gap-5 h-full">
-      {/* Left: list */}
       <div className="lg:w-80 xl:w-96 flex-shrink-0 space-y-3">
         <button
           onClick={handleNew}
@@ -111,7 +128,7 @@ export default function AdminAnnouncements() {
           </div>
         ) : (
           <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
-            {items.map(ann => (
+            {items.map((ann) => (
               <button
                 key={ann.id}
                 onClick={() => handleSelect(ann)}
@@ -128,7 +145,7 @@ export default function AdminAnnouncements() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${CAT_COLORS[ann.category]}`}>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${CAT_COLORS[ann.category] || 'bg-gray-100 text-gray-600'}`}>
                     {ann.category}
                   </span>
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${PRIORITY_COLORS[ann.priority]}`}>
@@ -144,7 +161,6 @@ export default function AdminAnnouncements() {
         )}
       </div>
 
-      {/* Right: editor */}
       <div className="flex-1 bg-white rounded-xl border border-[#E5E3DC] shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-[#E5E3DC] flex items-center justify-between">
           <h2 className="font-semibold text-[#1A1A1A] text-sm">
@@ -163,7 +179,7 @@ export default function AdminAnnouncements() {
             <input
               type="text"
               value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="Announcement title..."
               className="w-full px-4 py-2.5 border border-[#E5E3DC] rounded-xl text-sm text-[#1A1A1A] focus:outline-none focus:border-[#0F6E56] transition-colors"
             />
@@ -174,20 +190,20 @@ export default function AdminAnnouncements() {
               <label className="block text-xs font-semibold text-[#1A1A1A] mb-1.5">Category</label>
               <select
                 value={form.category}
-                onChange={e => setForm(f => ({ ...f, category: e.target.value as Announcement['category'] }))}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                 className="w-full px-4 py-2.5 border border-[#E5E3DC] rounded-xl text-sm text-[#1A1A1A] focus:outline-none focus:border-[#0F6E56] bg-white"
               >
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-[#1A1A1A] mb-1.5">Priority</label>
               <select
                 value={form.priority}
-                onChange={e => setForm(f => ({ ...f, priority: e.target.value as Announcement['priority'] }))}
+                onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as Announcement['priority'] }))}
                 className="w-full px-4 py-2.5 border border-[#E5E3DC] rounded-xl text-sm text-[#1A1A1A] focus:outline-none focus:border-[#0F6E56] bg-white"
               >
-                {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
           </div>
@@ -196,7 +212,7 @@ export default function AdminAnnouncements() {
             <label className="block text-xs font-semibold text-[#1A1A1A] mb-1.5">Body</label>
             <textarea
               value={form.body}
-              onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
               placeholder="Write your announcement here..."
               rows={6}
               className="w-full px-4 py-3 border border-[#E5E3DC] rounded-xl text-sm text-[#1A1A1A] focus:outline-none focus:border-[#0F6E56] resize-none transition-colors"
@@ -206,18 +222,18 @@ export default function AdminAnnouncements() {
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => handleSave(false)}
-              disabled={!form.title.trim()}
+              disabled={!form.title.trim() || saving}
               className="flex items-center gap-2 px-4 py-2.5 border border-[#E5E3DC] rounded-xl text-sm font-semibold text-[#1A1A1A] hover:border-[#0F6E56] hover:text-[#0F6E56] transition-colors disabled:opacity-40 bg-white"
             >
-              <Save size={15} />
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
               Save Draft
             </button>
             <button
               onClick={() => handleSave(true)}
-              disabled={!form.title.trim()}
+              disabled={!form.title.trim() || saving}
               className="flex items-center gap-2 px-4 py-2.5 bg-[#0F6E56] hover:bg-[#0d5844] text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-40"
             >
-              <Send size={15} />
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
               Publish
             </button>
             {selected && (

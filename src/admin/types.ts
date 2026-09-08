@@ -87,7 +87,7 @@ export function getRiskClass(status: string) {
 export function exportCSV(headers: string[], rows: (string | number)[][], filename: string) {
   const csv = [
     headers.join(','),
-    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
   ].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
