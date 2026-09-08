@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, AlertCircle, Clock, CheckCircle, Activity, MapPin, Phone } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Loader2, Clock, CheckCircle, Activity, MapPin, Phone } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { updateAlertStatus } from '../services/scanService';
@@ -199,7 +199,6 @@ function AlertDetailModal({
   onClose: () => void;
 }) {
   const scan = alert.scan as Scan | undefined;
-  const [notes, setNotes] = useState(alert.notes);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">

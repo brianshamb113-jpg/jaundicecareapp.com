@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Users, Activity, AlertTriangle, Building2, Loader2 } from 'lucide-react';
+import { Activity, AlertTriangle, Building2, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { ScreeningRecord, Alert, Hospital, Profile } from './types';
 

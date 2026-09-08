@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Trash2, LogOut, CheckCircle, Loader2 } from 'lucide-react';
+import { Download, LogOut, CheckCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { exportCSV } from './types';

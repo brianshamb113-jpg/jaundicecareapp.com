@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import LandingPage from './pages/LandingPage';
@@ -11,7 +11,6 @@ import HospitalDashboard from './pages/HospitalDashboard';
 
 function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: string }) {
   const { session, profile, loading } = useAuth();
-  const navigate = useNavigate();
 
   if (loading) {
     return (
@@ -35,7 +34,6 @@ function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; 
 
 function AppRoutes() {
   const { session, profile, loading } = useAuth();
-  const navigate = useNavigate();
 
   if (loading) {
     return (
@@ -61,7 +59,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage onNavigate={navigate} />} />
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route

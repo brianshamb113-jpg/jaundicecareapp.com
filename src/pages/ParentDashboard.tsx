@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Baby as BabyIcon, Camera, AlertCircle, ChevronRight, Loader2, Trash2, X } from 'lucide-react';
+import { Plus, Baby as BabyIcon, Camera, AlertCircle, ChevronRight, Loader2, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Baby, Scan, Announcement } from '../types';

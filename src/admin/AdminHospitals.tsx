@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle, XCircle, Building2, Search, Phone, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Hospital, Profile } from './types';

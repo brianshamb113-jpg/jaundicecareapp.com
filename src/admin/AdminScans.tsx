@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Search, Download, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { ScreeningRecord } from './types';
