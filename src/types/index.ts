@@ -37,6 +37,14 @@ export interface Baby {
   created_at: string;
 }
 
+export interface ScanLocation {
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+  address: string;
+  captured_at: string | null;
+}
+
 export interface Scan {
   id: string;
   baby_id: string | null;
@@ -49,6 +57,11 @@ export interface Scan {
   scan_date: string;
   is_offline: boolean;
   synced_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
+  location_address: string | null;
+  location_captured_at: string | null;
   baby?: Baby;
 }
 
@@ -65,6 +78,11 @@ export interface Alert {
   notes: string;
   created_at: string;
   resolved_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
+  location_address: string | null;
+  location_updated_at: string | null;
   scan?: Scan;
 }
 
