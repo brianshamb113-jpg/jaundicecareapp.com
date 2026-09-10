@@ -7,6 +7,11 @@ export interface ScreeningRecord {
   confidence_score: number;
   scan_date: string;
   is_offline: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
+  location_address: string | null;
+  location_captured_at: string | null;
   baby?: Baby;
   parent?: Profile;
 }
@@ -20,6 +25,11 @@ export interface Alert {
   response_time: number | null;
   created_at: string;
   resolved_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
+  location_address: string | null;
+  location_updated_at: string | null;
   scan?: ScreeningRecord;
   parent?: Profile;
   hospital?: Hospital;

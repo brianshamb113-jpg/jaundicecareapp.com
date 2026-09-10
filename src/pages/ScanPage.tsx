@@ -1,18 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader2, AlertCircle, CheckCircle, RefreshCw, Upload } from 'lucide-react';
+import { ArrowLeft, Camera, Loader2, AlertCircle, CheckCircle, RefreshCw, Upload, MapPin, Navigation, WifiOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { loadTeachableMachineModel, runScan, preprocessImage, type ScanResult, type TMModel } from '../services/aiScan';
 import { uploadScanImage, saveScanToDb, createAlertForHighRiskScan } from '../services/scanService';
+import { resolveLocation, requestCurrentLocation, getCachedLocation, mapsUrl, type LocationData } from '../services/locationService';
+import { getStoreItems, type OfflineScan } from '../services/offlineDb';
 import type { Baby } from '../types';
 
-type Phase = 'select' | 'capture' | 'analyzing' | 'result';
+type Phase = 'select' | 'location' | 'capture' | 'analyzing' | 'result';
 
 export default function ScanPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const isOnline = useOnlineStatus();
   const [phase, setPhase] = useState<Phase>('select');
   const [babies, setBabies] = useState<Baby[]>([]);
   const [selectedBabyId, setSelectedBabyId] = useState<string>('');
@@ -22,6 +25,12 @@ export default function ScanPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [location, setLocation] = useState<LocationData | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [manualAddress, setManualAddress] = useState('');
+  const [showManual, setShowManual] = useState(false);
 
   useEffect(() => {
     const preselect = searchParams.get('baby');
@@ -41,6 +50,54 @@ export default function ScanPage() {
   useEffect(() => {
     loadTeachableMachineModel().then(setModel);
   }, []);
+
+  const handleGetLocation = useCallback(async () => {
+    setLocating(true);
+    setLocationError(null);
+    try {
+      const loc = await resolveLocation();
+      setLocation(loc);
+      if (loc.source === 'cached') {
+        setLocationError('Using last known location (GPS unavailable). You can refresh or enter manually.');
+      }
+    } catch (err) {
+      setLocationError(err instanceof Error ? err.message : 'Could not get your location.');
+      const cached = await getCachedLocation();
+      if (cached) {
+        setLocation({ ...cached, source: 'cached' });
+        setLocationError('Using last known location. Please confirm or enter manually.');
+      }
+    } finally {
+      setLocating(false);
+    }
+  }, []);
+
+  const handleRefreshLocation = useCallback(async () => {
+    setLocating(true);
+    setLocationError(null);
+    try {
+      const loc = await requestCurrentLocation();
+      setLocation(loc);
+    } catch (err) {
+      setLocationError(err instanceof Error ? err.message : 'Could not refresh location.');
+    } finally {
+      setLocating(false);
+    }
+  }, []);
+
+  const handleManualSubmit = () => {
+    if (!manualAddress.trim()) return;
+    const loc: LocationData = {
+      lat: 0,
+      lng: 0,
+      accuracy: 0,
+      address: manualAddress.trim(),
+      capturedAt: new Date().toISOString(),
+      source: 'manual',
+    };
+    setLocation(loc);
+    setLocationError(null);
+  };
 
   const handleAnalyze = useCallback(async () => {
     if (!capturedImage) return;
@@ -64,19 +121,28 @@ export default function ScanPage() {
     setError(null);
 
     try {
-      const imageUrl = await uploadScanImage(capturedImage || '', user.id);
+      const isOffline = !navigator.onLine;
+      let imageUrl: string | null = null;
+      if (!isOffline && capturedImage) {
+        imageUrl = await uploadScanImage(capturedImage, user.id);
+      }
+
       const scan = await saveScanToDb({
         babyId: selectedBabyId || null,
         parentId: user.id,
+        imageBase64: capturedImage || undefined,
         imageUrl,
         imagePath: imageUrl ? `scans/${user.id}/${Date.now()}/scan.jpg` : null,
         riskLevel: result.riskLevel,
         confidenceScore: result.confidence,
-        isOffline: !navigator.onLine,
+        isOffline,
+        location,
       });
 
+      const scanId = (scan as { id: string }).id;
+
       if (result.riskLevel === 'High') {
-        await createAlertForHighRiskScan(scan.id, user.id);
+        await createAlertForHighRiskScan(scanId, user.id, location);
       }
 
       setSaved(true);
@@ -103,13 +169,19 @@ export default function ScanPage() {
     <div className="pb-28">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-[#0F6E56] text-white p-4 rounded-b-xl shadow-lg">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <button onClick={() => navigate('/dashboard')} className="text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h2 className="font-bold">New Scan</h2>
           <div className="w-5"></div>
         </div>
+        {!isOnline && (
+          <div className="flex items-center gap-1.5 text-xs bg-[#BA7517]/20 border border-[#BA7517]/30 rounded-lg px-3 py-1.5">
+            <WifiOff className="w-3.5 h-3.5" />
+            <span>You are offline. Scans will be saved locally and synced when connection returns.</span>
+          </div>
+        )}
       </div>
 
       <div className="p-4 space-y-4">
@@ -148,23 +220,163 @@ export default function ScanPage() {
             </div>
 
             <button
-              onClick={() => setPhase('capture')}
+              onClick={() => setPhase('location')}
               disabled={!selectedBabyId}
               className="w-full bg-[#0F6E56] hover:bg-[#0d5844] disabled:bg-gray-300 text-white font-bold py-3 px-4 rounded-lg transition-colors"
             >
-              Continue to Camera
+              Continue
             </button>
+          </div>
+        )}
+
+        {/* Phase: Location */}
+        {phase === 'location' && (
+          <div className="space-y-4">
+            <button onClick={() => setPhase('select')} className="text-[#185FA5] font-semibold text-sm flex items-center gap-1">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+
+            <div className="bg-[#E1F5EE] border border-[#0F6E56]/20 rounded-xl p-5">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#0F6E56] text-white flex items-center justify-center flex-shrink-0">
+                  <Navigation className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#1A1A1A] text-sm">Location Required</h3>
+                  <p className="text-xs text-[#5F5E5A] mt-1">
+                    We need your current location to send emergency help to your exact position if needed.
+                    Your coordinates are stored with each scan.
+                  </p>
+                </div>
+              </div>
+
+              {!location && !locating && (
+                <button
+                  onClick={handleGetLocation}
+                  className="w-full bg-[#0F6E56] hover:bg-[#0d5844] text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <MapPin className="w-5 h-5" /> Get My Location
+                </button>
+              )}
+
+              {locating && (
+                <div className="flex items-center justify-center gap-2 py-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-[#0F6E56]" />
+                  <span className="text-sm text-[#5F5E5A]">Detecting your location...</span>
+                </div>
+              )}
+
+              {locationError && !locating && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-[#BA7517] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[#1A1A1A]">{locationError}</p>
+                  </div>
+                </div>
+              )}
+
+              {location && !locating && (
+                <div className="bg-white rounded-lg border border-[#0F6E56]/30 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-[#27500A]" />
+                    <span className="text-sm font-semibold text-[#27500A]">
+                      Location captured{location.source === 'cached' ? ' (cached)' : location.source === 'manual' ? ' (manual)' : ''}
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-xs text-[#5F5E5A]">
+                    {location.source !== 'manual' && (
+                      <>
+                        <p><strong>Coordinates:</strong> {location.lat.toFixed(5)}, {location.lng.toFixed(5)}</p>
+                        {location.accuracy > 0 && <p><strong>Accuracy:</strong> ±{Math.round(location.accuracy)} meters</p>}
+                      </>
+                    )}
+                    {location.address && <p><strong>Address:</strong> {location.address}</p>}
+                    <p><strong>Captured:</strong> {new Date(location.capturedAt).toLocaleString()}</p>
+                  </div>
+                  {location.source !== 'manual' && location.lat !== 0 && (
+                    <a
+                      href={mapsUrl(location)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[#185FA5] font-semibold flex items-center gap-1 hover:underline"
+                    >
+                      <MapPin className="w-3.5 h-3.5" /> View on Google Maps
+                    </a>
+                  )}
+                  <button
+                    onClick={handleRefreshLocation}
+                    className="text-xs text-[#0F6E56] font-semibold flex items-center gap-1 hover:underline"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Refresh location
+                  </button>
+                </div>
+              )}
+
+              {/* Manual entry */}
+              <div className="mt-3">
+                {!showManual ? (
+                  <button
+                    onClick={() => setShowManual(true)}
+                    className="text-xs text-[#185FA5] font-semibold hover:underline"
+                  >
+                    Enter location manually instead
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={manualAddress}
+                      onChange={(e) => setManualAddress(e.target.value)}
+                      placeholder="Enter your address, city, district..."
+                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-[#0F6E56] focus:outline-none text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleManualSubmit}
+                        disabled={!manualAddress.trim()}
+                        className="flex-1 bg-[#0F6E56] hover:bg-[#0d5844] disabled:bg-gray-300 text-white font-semibold text-sm py-2 px-4 rounded-lg transition-colors"
+                      >
+                        Use This Address
+                      </button>
+                      <button
+                        onClick={() => setShowManual(false)}
+                        className="px-4 py-2 bg-gray-100 text-gray-600 font-semibold text-sm rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {location && (
+              <button
+                onClick={() => setPhase('capture')}
+                className="w-full bg-[#0F6E56] hover:bg-[#0d5844] text-white font-bold py-3 px-4 rounded-lg transition-colors"
+              >
+                Continue to Camera
+              </button>
+            )}
           </div>
         )}
 
         {/* Phase: Capture */}
         {phase === 'capture' && (
-          <CapturePhase
-            capturedImage={capturedImage}
-            onCapture={setCapturedImage}
-            onAnalyze={handleAnalyze}
-            onBack={() => setPhase('select')}
-          />
+          <>
+            <div className="bg-[#E1F5EE] border border-[#0F6E56]/20 rounded-lg px-3 py-2 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-[#0F6E56] flex-shrink-0" />
+              <p className="text-xs text-[#1A1A1A] truncate">
+                {location?.address || `${location?.lat.toFixed(4)}, ${location?.lng.toFixed(4)}`}
+              </p>
+            </div>
+            <CapturePhase
+              capturedImage={capturedImage}
+              onCapture={setCapturedImage}
+              onAnalyze={handleAnalyze}
+              onBack={() => setPhase('location')}
+            />
+          </>
         )}
 
         {/* Phase: Analyzing */}
@@ -182,7 +394,9 @@ export default function ScanPage() {
             {saved && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-[#27500A]" />
-                <p className="text-sm text-[#27500A]">Scan saved successfully{result.riskLevel === 'High' ? ' and hospital alerted' : ''}.</p>
+                <p className="text-sm text-[#27500A]">
+                  Scan saved {!isOnline ? 'locally — will sync when online' : 'successfully'}{result.riskLevel === 'High' ? ' and hospital alerted' : ''}.
+                </p>
               </div>
             )}
 
@@ -199,6 +413,24 @@ export default function ScanPage() {
             {capturedImage && (
               <div className="flex justify-center">
                 <img src={capturedImage} alt="Scan" className="w-24 h-24 rounded-lg border-2 border-gray-300 object-cover" />
+              </div>
+            )}
+
+            {/* Location on result */}
+            {location && (
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                <p className="text-xs font-bold text-[#1A1A1A] flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-[#0F6E56]" /> Scan Location
+                </p>
+                {location.address && <p className="text-xs text-[#5F5E5A]">{location.address}</p>}
+                {location.source !== 'manual' && location.lat !== 0 && (
+                  <>
+                    <p className="text-xs text-[#5F5E5A]">{location.lat.toFixed(5)}, {location.lng.toFixed(5)} (±{Math.round(location.accuracy)}m)</p>
+                    <a href={mapsUrl(location)} target="_blank" rel="noopener noreferrer" className="text-xs text-[#185FA5] font-semibold hover:underline">
+                      View on Google Maps
+                    </a>
+                  </>
+                )}
               </div>
             )}
 
@@ -237,7 +469,7 @@ export default function ScanPage() {
                 disabled={saving}
                 className="w-full bg-[#0F6E56] hover:bg-[#0d5844] disabled:bg-gray-300 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
-                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save Scan Result'}
+                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : `Save Scan Result${!isOnline ? ' (Offline)' : ''}`}
               </button>
             )}
 

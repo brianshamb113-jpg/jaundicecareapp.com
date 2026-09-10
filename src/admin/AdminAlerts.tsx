@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Clock, MapPin, Phone } from 'lucide-react';
+import { Loader2, Clock, MapPin, Phone, Navigation, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { mapsUrl } from '../services/locationService';
 import type { Alert, Profile } from './types';
 
 const RESPONSE_LABELS: Record<string, string> = {
@@ -107,6 +108,42 @@ export default function AdminAlerts() {
                       <Clock className="w-3 h-3" />
                       {new Date(alert.created_at).toLocaleString()}
                     </span>
+                  </div>
+                )}
+                {/* Emergency GPS Location */}
+                {alert.latitude !== null && alert.longitude !== null && (
+                  <div className="mt-3 bg-[#FAECE7] border border-[#A32D2D]/15 rounded-lg p-3 space-y-1.5">
+                    <p className="text-xs font-bold text-[#A32D2D] flex items-center gap-1.5">
+                      <Navigation className="w-3.5 h-3.5" /> Emergency GPS Location
+                    </p>
+                    <p className="text-xs text-[#1A1A1A]">
+                      {alert.latitude.toFixed(5)}, {alert.longitude.toFixed(5)}
+                      {alert.location_accuracy !== null && ` (±${Math.round(alert.location_accuracy)}m)`}
+                    </p>
+                    {alert.location_address && <p className="text-xs text-[#5F5E5A]">{alert.location_address}</p>}
+                    <a
+                      href={mapsUrl({ lat: alert.latitude, lng: alert.longitude })}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[#185FA5] font-semibold hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Open in Google Maps
+                    </a>
+                  </div>
+                )}
+                {/* Scan GPS Location */}
+                {alert.scan && alert.scan.latitude !== null && alert.scan.longitude !== null && (
+                  <div className="mt-2 text-xs text-[#5F5E5A] flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-[#0F6E56]" />
+                    Scan location: {alert.scan.latitude.toFixed(4)}, {alert.scan.longitude.toFixed(4)}
+                    <a
+                      href={mapsUrl({ lat: alert.scan.latitude, lng: alert.scan.longitude })}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#185FA5] font-semibold hover:underline flex items-center gap-0.5 ml-1"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Map
+                    </a>
                   </div>
                 )}
                 {alert.response_time && (

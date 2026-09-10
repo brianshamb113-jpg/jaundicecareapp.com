@@ -1,18 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Baby as BabyIcon, Camera, AlertCircle, ChevronRight, Loader2, X } from 'lucide-react';
+import { Plus, Baby as BabyIcon, Camera, AlertCircle, ChevronRight, Loader2, X, WifiOff, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { getStoreItems, type OfflineScan } from '../services/offlineDb';
+import { syncOfflineData } from '../services/syncEngine';
 import type { Baby, Scan, Announcement } from '../types';
 
 export default function ParentDashboard() {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
+  const isOnline = useOnlineStatus();
   const [babies, setBabies] = useState<Baby[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddBaby, setShowAddBaby] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -39,6 +45,22 @@ export default function ParentDashboard() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const checkPending = async () => {
+      const items = await getStoreItems<OfflineScan>('scans');
+      setPendingSyncCount(items.length);
+    };
+    checkPending();
+  }, [isOnline]);
+
+  const handleManualSync = async () => {
+    setSyncing(true);
+    const result = await syncOfflineData();
+    setPendingSyncCount(result.pending);
+    setSyncing(false);
+    if (result.synced > 0) loadData();
+  };
+
   const criticalAnnouncements = announcements.filter((a) => a.priority === 'Critical');
 
   return (
@@ -53,6 +75,23 @@ export default function ParentDashboard() {
           </div>
         </div>
       ))}
+
+      {/* Offline / Sync banner */}
+      {!isOnline && (
+        <div className="bg-[#BA7517] text-white px-4 py-3 flex items-center gap-2">
+          <WifiOff className="w-4 h-4 flex-shrink-0" />
+          <p className="text-xs">You are offline. Scans will be saved on your device and synced when connection returns.</p>
+        </div>
+      )}
+      {isOnline && pendingSyncCount > 0 && (
+        <div className="bg-[#185FA5] text-white px-4 py-3 flex items-center gap-2">
+          <RefreshCw className={`w-4 h-4 flex-shrink-0 ${syncing ? 'animate-spin' : ''}`} />
+          <p className="text-xs flex-1">{pendingSyncCount} scan{pendingSyncCount !== 1 ? 's' : ''} waiting to sync</p>
+          <button onClick={handleManualSync} disabled={syncing} className="text-xs font-bold underline">
+            {syncing ? 'Syncing...' : 'Sync Now'}
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="sticky top-0 z-40 bg-[#0F6E56] text-white p-6 pt-8 rounded-b-3xl shadow-lg">

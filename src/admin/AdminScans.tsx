@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Download, Loader2 } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { mapsUrl } from '../services/locationService';
 import type { ScreeningRecord } from './types';
 import { getStatusBadge, getRiskClass, exportCSV } from './types';
 
@@ -41,7 +42,7 @@ export default function AdminScans() {
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleExport = () => {
-    const headers = ['Baby Name', 'Parent', 'Risk Level', 'Confidence', 'Date', 'Offline'];
+    const headers = ['Baby Name', 'Parent', 'Risk Level', 'Confidence', 'Date', 'Offline', 'Latitude', 'Longitude', 'Location'];
     const rows = scans.map(s => [
       s.baby?.name || 'Unknown',
       s.parent?.full_name || 'Unknown',
@@ -49,6 +50,9 @@ export default function AdminScans() {
       s.confidence_score,
       new Date(s.scan_date).toLocaleString(),
       s.is_offline ? 'Yes' : 'No',
+      (s as any).latitude ?? '',
+      (s as any).longitude ?? '',
+      (s as any).location_address ?? '',
     ]);
     exportCSV(headers, rows, `scans-${new Date().toISOString().split('T')[0]}.csv`);
   };
@@ -105,11 +109,12 @@ export default function AdminScans() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[#5F5E5A] whitespace-nowrap">Risk</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[#5F5E5A] whitespace-nowrap">Confidence</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[#5F5E5A] whitespace-nowrap">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-[#5F5E5A] whitespace-nowrap">Location</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F0EFE9]">
               {paginated.length === 0 ? (
-                <tr><td colSpan={5} className="py-12 text-center text-[#5F5E5A] text-sm">No records found</td></tr>
+                <tr><td colSpan={6} className="py-12 text-center text-[#5F5E5A] text-sm">No records found</td></tr>
               ) : (
                 paginated.map(s => (
                   <tr key={s.id} className="hover:bg-[#F7F6F2] transition-colors">
@@ -123,6 +128,23 @@ export default function AdminScans() {
                     <td className={`px-4 py-3 font-semibold ${getRiskClass(s.risk_level)}`}>{s.confidence_score}%</td>
                     <td className="px-4 py-3 text-[#5F5E5A] text-xs whitespace-nowrap">
                       {new Date(s.scan_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {(s as any).latitude !== null && (s as any).longitude !== null ? (
+                        <a
+                          href={mapsUrl({ lat: (s as any).latitude, lng: (s as any).longitude })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#185FA5] hover:underline flex items-center gap-1"
+                        >
+                          <MapPin className="w-3 h-3" /> View
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      ) : (s as any).location_address ? (
+                        <span className="text-[#5F5E5A]" title={(s as any).location_address}>{(s as any).location_address.slice(0, 20)}...</span>
+                      ) : (
+                        <span className="text-[#5F5E5A]">—</span>
+                      )}
                     </td>
                   </tr>
                 ))
